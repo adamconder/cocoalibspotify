@@ -523,6 +523,8 @@ static void private_session_mode_changed(sp_session *session, bool is_private) {
 
 static void show_signup_page(sp_session *session, sp_signup_page page, bool pageIsLoading, int featureMask, const char *recentUserName) {
 	
+	return;
+	
 	SPSession *sess = (__bridge SPSession *)sp_session_userdata(session);
 	@autoreleasepool {
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -537,6 +539,8 @@ static void show_signup_page(sp_session *session, sp_signup_page page, bool page
 
 static void show_signup_error_page(sp_session *session, sp_signup_page page, sp_error error) {
 	
+	return;
+	
 	SPSession *sess = (__bridge SPSession *)sp_session_userdata(session);
 	@autoreleasepool {
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -547,6 +551,8 @@ static void show_signup_error_page(sp_session *session, sp_signup_page page, sp_
 }
 
 static void connect_to_facebook(sp_session *session, const char **permissions, int permission_count) {
+	
+	return;
 	
 	SPSession *sess = (__bridge SPSession *)sp_session_userdata(session);
 	@autoreleasepool {
