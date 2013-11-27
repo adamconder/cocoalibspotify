@@ -43,7 +43,7 @@ static OSStatus AudioUnitRenderDelegateCallback(void *inRefCon,
 
 @end
 
-static NSTimeInterval const kTargetBufferLength = 0.5;
+static NSTimeInterval const kTargetBufferLength = 20;
 
 @implementation SPCoreAudioController {
 	

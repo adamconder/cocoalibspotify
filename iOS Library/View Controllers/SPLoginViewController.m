@@ -308,7 +308,7 @@ static NSMutableDictionary *loginControllerCache;
 	
 	[targetViewController dismissModalViewControllerAnimated:YES];
 	[self.loginDelegate loginViewController:self didCompleteSuccessfully:success];
-}
+} 
 
 -(void)handleShowSignupPage:(sp_signup_page)page loading:(BOOL)isLoading featureMask:(NSInteger)features recentUserName:(NSString *)name {
 	

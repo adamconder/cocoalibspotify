@@ -368,7 +368,7 @@ static void end_of_track(sp_session *session) {
 		
 		dispatch_async(dispatch_get_main_queue(), ^{
 			
-			sess.playing = NO;
+			//sess.playing = NO;
 			
 			SEL selector = @selector(sessionDidEndPlayback:);
 			if ([[sess playbackDelegate] respondsToSelector:selector]) { 
@@ -526,6 +526,7 @@ static void show_signup_page(sp_session *session, sp_signup_page page, bool page
 	SPSession *sess = (__bridge SPSession *)sp_session_userdata(session);
 	@autoreleasepool {
 		dispatch_async(dispatch_get_main_queue(), ^{
+            return;
 			[[SPLoginViewController loginControllerForSession:sess] handleShowSignupPage:page
 																				 loading:pageIsLoading
 																			 featureMask:featureMask
@@ -774,47 +775,63 @@ static SPSession *sharedSession;
 		}
 		
 		// Find the application support directory for settings
-		NSString *applicationSupportDirectory = nil;
+		NSURL *applicationSupportDirectory = nil;
 		NSArray *potentialDirectories = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
 																			NSUserDomainMask,
 																			YES);
 		
 		if ([potentialDirectories count] > 0) {
-			applicationSupportDirectory = [[potentialDirectories objectAtIndex:0] stringByAppendingPathComponent:aUserAgent];
+			applicationSupportDirectory = [NSURL fileURLWithPath:[[potentialDirectories objectAtIndex:0] stringByAppendingPathComponent:aUserAgent]];
 		} else {
-			applicationSupportDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:aUserAgent];
+			applicationSupportDirectory = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:aUserAgent]];
 		}
 		
-		if (![[NSFileManager defaultManager] fileExistsAtPath:applicationSupportDirectory]) {
-			if (![[NSFileManager defaultManager] createDirectoryAtPath:applicationSupportDirectory
-										   withIntermediateDirectories:YES
+		if (![applicationSupportDirectory checkResourceIsReachableAndReturnError:nil]) {
+            if (![[NSFileManager defaultManager] createDirectoryAtURL:applicationSupportDirectory
+                                          withIntermediateDirectories:YES
 															attributes:nil
 																 error:error]) {
 				return nil;
 			}
 		}
+        
+#if TARGET_OS_IPHONE
+        if (![applicationSupportDirectory setResourceValue:[NSNumber numberWithBool:YES]
+                                                    forKey:NSURLIsExcludedFromBackupKey
+                                                     error:error]) {
+            return nil;
+        }
+#endif
 		
 		// Find the caches directory for cache
-		NSString *cacheDirectory = nil;
+        NSURL *cacheDirectory = nil;
 		
 		NSArray *potentialCacheDirectories = NSSearchPathForDirectoriesInDomains(NSCachesDirectory,
 																				 NSUserDomainMask,
 																				 YES);
 		
 		if ([potentialCacheDirectories count] > 0) {
-			cacheDirectory = [[potentialCacheDirectories objectAtIndex:0] stringByAppendingPathComponent:aUserAgent];
+			cacheDirectory = [NSURL fileURLWithPath:[[potentialCacheDirectories objectAtIndex:0] stringByAppendingPathComponent:aUserAgent]];
 		} else {
-			cacheDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:aUserAgent];
+			cacheDirectory = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:aUserAgent]];
 		}
 		
-		if (![[NSFileManager defaultManager] fileExistsAtPath:cacheDirectory]) {
-			if (![[NSFileManager defaultManager] createDirectoryAtPath:cacheDirectory
+		if (![cacheDirectory checkResourceIsReachableAndReturnError:nil]) {
+            if (![[NSFileManager defaultManager] createDirectoryAtURL:cacheDirectory
 										   withIntermediateDirectories:YES
 															attributes:nil
 																 error:error]) {
 				return nil;
 			}
 		}
+        
+#if TARGET_OS_IPHONE
+        if (![cacheDirectory setResourceValue:[NSNumber numberWithBool:YES]
+                                       forKey:NSURLIsExcludedFromBackupKey
+                                        error:error]) {
+            return nil;
+        }
+#endif
 		
 		// Set the audio description - other fields will be filled in when we start getting audio.
 		memset(&libSpotifyAudioDescription, 0, sizeof(libSpotifyAudioDescription));
@@ -835,9 +852,8 @@ static SPSession *sharedSession;
 			config.application_key = [appKey bytes];
 			config.application_key_size = [appKey length];
 			config.user_agent = [aUserAgent UTF8String];
-			config.settings_location = [applicationSupportDirectory UTF8String];
-			config.cache_location = [cacheDirectory UTF8String];
-			config.userdata = (__bridge void *)self;
+			config.settings_location = [[applicationSupportDirectory path] UTF8String];
+            config.cache_location = [[cacheDirectory path] UTF8String];			config.userdata = (__bridge void *)self;
 			config.callbacks = &_callbacks;
 			
 			sp_error createErrorCode = sp_session_create(&config, &_session);
