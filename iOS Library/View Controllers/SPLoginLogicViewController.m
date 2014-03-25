@@ -119,12 +119,12 @@
 - (IBAction)performLogin:(id)sender {
 	
 	if (self.usernameField.text.length == 0 || self.passwordField.text.length == 0) {
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Login Failed"
-														message:@"Please enter your username and password."
-													   delegate:nil
-											  cancelButtonTitle:@"OK"
-											  otherButtonTitles:nil];
-		[alert show];
+//		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Login Failed"
+//														message:@"Please enter your username and password."
+//													   delegate:nil
+//											  cancelButtonTitle:@"OK"
+//											  otherButtonTitles:nil];
+//		[alert show];
 
 		return;
 	}
@@ -148,12 +148,12 @@
 	
 	NSError *error = [[notification userInfo] valueForKey:SPSessionLoginDidFailErrorKey];
 	
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Login Failed"
-													message:[error localizedDescription]
-												   delegate:nil
-										  cancelButtonTitle:@"OK"
-										  otherButtonTitles:nil];
-	[alert show];
+//	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Login Failed"
+//													message:[error localizedDescription]
+//												   delegate:nil
+//										  cancelButtonTitle:@"OK"
+//										  otherButtonTitles:nil];
+//	[alert show];
 	
 	[self switchViewToLoggingInState:NO];
 }

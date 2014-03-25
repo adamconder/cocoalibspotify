@@ -35,6 +35,7 @@
 #import "SPTrack.h"
 #import "SPSession.h"
 #import "SPErrorExtensions.h"
+#import "SPPlaylistItem.h"
 
 @interface SPPlaybackManager ()
 
@@ -59,6 +60,15 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 	NSInvocation *incrementTrackPositionInvocation;
 }
 
+-(void)clearCurrentAudioBuffer;
+{
+        [self.audioController clearAudioBuffers];
+        [self.audioController setVolume:0.0];
+    
+        [self.audioController2 clearAudioBuffers];
+        [self.audioController2 setVolume:0.0];
+}
+
 -(id)initWithPlaybackSession:(SPSession *)aSession {
     
     if ((self = [super init])) {
@@ -67,10 +77,14 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 		self.playbackSession.playbackDelegate = (id)self;
 		self.audioController = [[SPCoreAudioController alloc] init];
 		self.audioController.delegate = self;
+        
+        self.playbackSession.audioDeliveryDelegate = self.audioController;
+        [self.audioController setVolume:0];
+        
         self.audioController2 = [[SPCoreAudioController alloc] init];
         self.audioController2.delegate = self;
+        
         [self.audioController2 setVolume:0]; // set the second chanel to 0 to fade in from start
-		self.playbackSession.audioDeliveryDelegate = self.audioController;
 		
 		[self addObserver:self
 			   forKeyPath:@"playbackSession.playing"
@@ -103,6 +117,9 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 	
 	self.audioController.delegate = nil;
 	self.audioController = nil;
+    
+    self.audioController2.delegate = nil;
+    self.audioController2 = nil;
 }
 
 @synthesize audioController;
@@ -127,11 +144,20 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 @synthesize currentTrack;
 
 -(void)playTrack:(SPTrack *)aTrack callback:(SPErrorableOperationCallback)block {
+    
+    self.callbackBlock = block;
 	// new
     // if playing song then call crossfade track?
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL crossFade = [defaults boolForKey:@"enableCrossfade"];
-    if (self.playbackSession.playing && crossFade) {
+    if (crossFade) {
+        
+        if (aTrack.availability != SP_TRACK_AVAILABILITY_AVAILABLE) {
+            if (block) block([NSError spotifyErrorWithCode:SP_ERROR_TRACK_NOT_PLAYABLE]);
+            self.currentTrack = nil;
+            return;
+        }
+        
         [self crossfadeTrack:aTrack callback:block];
         return;
     }
@@ -170,163 +196,157 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 // fade between the two
 // [self.audioController setVolume:(double)];
 //NEED TO PRELOAD THE NEW TRACK SO IT DOESNT JUMP
--(void)crossfadeTrack:(SPTrack *)aTrack callback:(SPErrorableOperationCallback)block {
+-(void)crossfadeTrack:(SPTrack *)aTrack callback:(SPErrorableOperationCallback)block;
+{
     // switch audiocontroller from current to other
-    [self.playbackSession preloadTrackForPlayback:aTrack callback:^(NSError *error) {
-        if (error) {
-            block(error);
-            return;
-        }
+    if ([aTrack isKindOfClass:[SPPlaylistItem class]]) {
+        aTrack = [(SPPlaylistItem*)aTrack item];
+    }
     
         [SPAsyncLoading waitUntilLoaded:aTrack timeout:kSPAsyncLoadingDefaultTimeout then:^(NSArray *loadedItems, NSArray *notLoadedItems) {
             if ([loadedItems count]>0) {
                 SPTrack *newTrack = loadedItems[0];
                 if ([newTrack isLoaded]) {
+                    
                         if (self.playbackSession.audioDeliveryDelegate == self.audioController)
                         {
-                            self.playbackSession.audioDeliveryDelegate = self.audioController2;
-                            self.audioController2.delegate = self;
-                            //[self.audioController2 setVolume:0];
                             self.audioController.delegate = nil;
-                        }
-                        else
-                        {
-                            self.playbackSession.audioDeliveryDelegate = self.audioController;
-                            self.audioController.delegate = self;
-                            //[self.audioController setVolume:0];
+                            
+                            // switch to the alternative playback delegate
+                            self.audioController2.delegate = self;
+                            
+                            [self.playbackSession setAudioDeliveryDelegate:self.audioController2];
+                        } else if (self.playbackSession.audioDeliveryDelegate == self.audioController2) {
+                            
                             self.audioController2.delegate = nil;
+                            
+                            // switch back to the original playback
+                            self.audioController.delegate = self;
+                            
+                            [self.playbackSession setAudioDeliveryDelegate:self.audioController];
                         }
                         
                         if (aTrack.availability != SP_TRACK_AVAILABILITY_AVAILABLE) {
                             if (block) block([NSError spotifyErrorWithCode:SP_ERROR_TRACK_NOT_PLAYABLE]);
                             self.currentTrack = nil;
+                            return;
                         }
-                        
-                        // check the duration of the current track, if this is before the current fade duration then clear the previous audiocontroller to prevent previous track being played first (this is because the autocontroller hasn't cleared as the fade duration hasn't finished)
-                        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-                        float duration = [defaults floatForKey:@"crossfadeDuration"];
-                        if (self.trackPosition<duration) {
-                            // clear the previous buffer as it's not cleared yet and you'll hear a preview
-                            if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
-                                // clear the old track
-                                [self.audioController2 clearAudioBuffers];
-                            } else {
-                                // clear the old track
-                                [self.audioController clearAudioBuffers];
-                            }
-                            
-                            // set the track position back to zero for the new song
-                            self.currentTrack = aTrack;
-                            self.trackPosition = 0.0;
-                            
-                            [self.playbackSession playTrack:self.currentTrack callback:^(NSError *error) {
-                                if (!error) {
-                                    if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
-                                        // not fading so just set the volume
-                                        [self.audioController setVolume:1];
-                                        [self.audioController2 setVolume:0];
-                                    } else {
-                                        // not fading so just set the volume
-                                        [self.audioController setVolume:0];
-                                        [self.audioController2 setVolume:1];
-                                    }
-                                    self.playbackSession.playing = YES;
-                                    block(nil);
-                                } else {
-                                    self.currentTrack = nil;
-                                    if (block) {
-                                        block(error);
-                                    }
-                                }
-                            }];
-                        } else {
+                    
                             // after the fade duration so fade the next song correctly
                             // set the track position back to zero for the new song
-                            self.currentTrack = aTrack;
+                            self.currentTrack = newTrack;
                             self.trackPosition = 0.0;
-                            
+                        
                             [self.playbackSession playTrack:self.currentTrack callback:^(NSError *error) {
                                 if (!error) {
                                     // cross fade the new track
                                     // improve loading my delaying playing a second later to allow the track to buffer
-                                    double delayInSeconds = 1.0;
+                                    
+                                    double delayInSeconds = 0.5f;
                                     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
                                     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
                                         self.originalTrackTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 target:self selector:@selector(fadeOutOriginalTrack:) userInfo:nil repeats:TRUE];
                                         self.newerTrackTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 target:self selector:@selector(fadeInNewTrack:) userInfo:nil repeats:TRUE];
                                         self.playbackSession.playing = YES;
-                                        block(nil);
                                     });
                                 } else {
                                     self.currentTrack = nil;
+                                    
+                                    [self clearCurrentAudioBuffer];
+                                    
                                     if (block) {
                                         block(error);
                                     }
                                 }
                             }];
-                        }
                 } else {
                     [self crossfadeTrack:aTrack callback:block];
                 }
+            } else if ([notLoadedItems count]>0) {
+                [self crossfadeTrack:aTrack callback:block];
             }
         }];
-    }];
 }
 
 -(void)fadeOutOriginalTrack:(NSTimer*)timer;
 {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    float duration = [defaults floatForKey:@"crossfadeDuration"];
-    duration = 1/duration; // work out the intervals in seconds to crossfade
-    if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
-        // fade out the old track
-        double volume = self.audioController2.volume;
-//        NSLog(@"OUT AUDIO VOLUME 2: %f", volume);
-        if (volume > 0) {
-             [self.audioController2 setVolume:volume-(duration/10)];
-        } else {
-            // invalidate the timer
-            [self.audioController2 clearAudioBuffers];
-            [self.originalTrackTimer invalidate];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        float duration = [defaults floatForKey:@"crossfadeDuration"];
+        duration = 1/duration; // work out the intervals in seconds to crossfade
+        if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
+            // fade out the old track
+            double volume = self.audioController2.volume;
+            NSLog(@"FADE OUT AUDIO VOLUME 2: %f", volume);
+            if (volume > 0.1) {
+                [self.audioController2 setVolume:volume-(duration/10)];
+            } else {
+                [self.audioController2 setVolume:0.0];
+                // invalidate the timer
+                
+                [self.originalTrackTimer invalidate];
+                self.originalTrackTimer = nil;
+            }
+        } else if (self.playbackSession.audioDeliveryDelegate == self.audioController2) {
+            // fade out the old track
+            double volume = self.audioController.volume;
+            NSLog(@"FADE OUT AUDIO VOLUME 1: %f", volume);
+            if (volume > 0.1) {
+                [self.audioController setVolume:volume-(duration/10)];
+            } else {
+                [self.audioController setVolume:0.0];
+                // invalidate the timer
+                
+                [self.originalTrackTimer invalidate];
+                self.originalTrackTimer = nil;
+            }
         }
-    } else {
-        // fade out the old track
-        double volume = self.audioController.volume;
-//        NSLog(@"OUT AUDIO VOLUME 1: %f", volume);
-        if (volume > 0) {
-            [self.audioController setVolume:volume-(duration/10)];
-        } else {
-            // invalidate the timer
-            [self.audioController clearAudioBuffers];
-            [self.originalTrackTimer invalidate];
-        }
-    }
+    });
 }
 
 -(void)fadeInNewTrack:(NSTimer*)timer;
 {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    float duration = [defaults floatForKey:@"crossfadeDuration"];
-    duration = 1/duration; // work out the intervals in seconds to crossfade
-    if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
-        // fade in the new track
-        double volume = self.audioController.volume;
-        if (volume <= 1) {
-//            NSLog(@"IN AUDIO VOLUME 1 %f", volume);
-            [self.audioController setVolume:volume+(duration/10)];
-        } else {
-            [self.newerTrackTimer invalidate];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        float duration = [defaults floatForKey:@"crossfadeDuration"];
+        duration = 1/duration; // work out the intervals in seconds to crossfade
+        
+        if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
+            // fade in the new track
+            double volume = self.audioController.volume;
+            if (volume < 0.9) {
+                NSLog(@"FADE IN AUDIO VOLUME 1 %f", volume);
+                [self.audioController setVolume:volume+(duration/10)];
+            } else {
+                [self.newerTrackTimer invalidate];
+                self.newerTrackTimer = nil;
+                
+                [self.audioController setVolume:1.0];
+                [self.audioController2 clearAudioBuffers];
+                
+                if (self.callbackBlock) {
+                    self.callbackBlock(nil);
+                }
+            }
+        } else if (self.playbackSession.audioDeliveryDelegate == self.audioController2) {
+            // fade in the new track
+            double volume = self.audioController2.volume;
+            if (volume < 0.9) {
+                NSLog(@"FADE IN AUDIO VOLUME 2 %f", volume);
+                [self.audioController2 setVolume:volume+(duration/10)];
+            } else {
+                [self.newerTrackTimer invalidate];
+                self.newerTrackTimer = nil;
+                
+                [self.audioController2 setVolume:1.0];
+                [self.audioController clearAudioBuffers];
+                
+                if (self.callbackBlock) {
+                    self.callbackBlock(nil);
+                }
+            }
         }
-    } else {
-        // fade in the new track
-        double volume = self.audioController2.volume;
-        if (volume <= 1) {
-//            NSLog(@"IN AUDIO VOLUME 2 %f", volume);
-            [self.audioController2 setVolume:volume+(duration/10)];
-        } else {
-            [self.newerTrackTimer invalidate];
-        }
-    }
+    });
 }
 
 -(void)seekToTrackPosition:(NSTimeInterval)newPosition {
@@ -351,8 +371,10 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     
 	if ([keyPath isEqualToString:@"playbackSession.playing"] && context == kSPPlaybackManagerKVOContext) {
+        
         self.audioController.audioOutputEnabled = self.playbackSession.isPlaying;
         self.audioController2.audioOutputEnabled = self.playbackSession.isPlaying;
+        
 	} else {
 		[super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
 	}
@@ -361,10 +383,16 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 #pragma mark -
 #pragma mark Audio Controller Delegate
 
--(void)coreAudioController:(SPCoreAudioController *)controller didOutputAudioOfDuration:(NSTimeInterval)audioDuration {
+-(void)coreAudioController:(SPCoreAudioController *)controller didOutputAudioOfDuration:(NSTimeInterval)audioDuration; {
 	
-	if (self.trackPosition == 0.0)
+    // ensure we are enabled and have audio playback
+    if (!self.playbackSession.isPlaying) {
+        [self setIsPlaying:YES];
+    }
+    
+	if (self.trackPosition == 0.0) {
 		dispatch_async(dispatch_get_main_queue(), ^{ [self.delegate playbackManagerWillStartPlayingAudio:self]; });
+    }
 	
 	self.trackPosition += audioDuration;
 }

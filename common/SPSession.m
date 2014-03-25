@@ -368,7 +368,8 @@ static void end_of_track(sp_session *session) {
 		
 		dispatch_async(dispatch_get_main_queue(), ^{
 			
-			//sess.playing = NO;
+            // ADAM this may need to be commented out
+//			sess.playing = NO;
 			
 			SEL selector = @selector(sessionDidEndPlayback:);
 			if ([[sess playbackDelegate] respondsToSelector:selector]) { 
@@ -728,6 +729,10 @@ static SPSession *sharedSession;
 													userAgent:aUserAgent
 												loadingPolicy:policy
 														error:error];
+    
+    // normalise the volume throughout tracks
+    [sharedSession setUsingVolumeNormalization:YES];
+    
 	if (sharedSession == nil)
 		return NO;
 

@@ -58,6 +58,10 @@
 
 @interface SPPlaybackManager : NSObject <SPSessionPlaybackDelegate, SPCoreAudioControllerDelegate>
 
+@property (nonatomic, strong) SPErrorableOperationCallback callbackBlock;
+
+-(void)clearCurrentAudioBuffer;
+
 /** Initialize a new SPPlaybackManager object. 
  
  @param aSession The session that should stream and decode audio data.

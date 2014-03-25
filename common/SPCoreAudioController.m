@@ -43,7 +43,7 @@ static OSStatus AudioUnitRenderDelegateCallback(void *inRefCon,
 
 @end
 
-static NSTimeInterval const kTargetBufferLength = 20;
+static NSTimeInterval const kTargetBufferLength = 5.0f;
 
 @implementation SPCoreAudioController {
 	
@@ -500,7 +500,9 @@ static OSStatus AudioUnitRenderDelegateCallback(void *inRefCon,
 }
 
 -(void)incrementTrackPositionWithFrameCount:(UInt32)framesToAppend {
-	[self.delegate coreAudioController:self didOutputAudioOfDuration:framesToAppend/self.inputAudioDescription.mSampleRate];
+    if (self.delegate) {
+        [self.delegate coreAudioController:self didOutputAudioOfDuration:framesToAppend/self.inputAudioDescription.mSampleRate];
+    }
 }
 
 @end
