@@ -79,7 +79,7 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
 		self.audioController.delegate = self;
         
         self.playbackSession.audioDeliveryDelegate = self.audioController;
-        [self.audioController setVolume:0];
+        //[self.audioController setVolume:0];
         
         self.audioController2 = [[SPCoreAudioController alloc] init];
         self.audioController2.delegate = self;
@@ -314,7 +314,7 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
         if (self.playbackSession.audioDeliveryDelegate == self.audioController) {
             // fade in the new track
             double volume = self.audioController.volume;
-            if (volume < 0.9) {
+            if (volume < 0.9 && volume > 0) {
                 NSLog(@"FADE IN AUDIO VOLUME 1 %f", volume);
                 [self.audioController setVolume:volume+(duration/10)];
             } else {
@@ -331,7 +331,7 @@ static void * const kSPPlaybackManagerKVOContext = @"kSPPlaybackManagerKVOContex
         } else if (self.playbackSession.audioDeliveryDelegate == self.audioController2) {
             // fade in the new track
             double volume = self.audioController2.volume;
-            if (volume < 0.9) {
+            if (volume < 0.9 && volume > 0) {
                 NSLog(@"FADE IN AUDIO VOLUME 2 %f", volume);
                 [self.audioController2 setVolume:volume+(duration/10)];
             } else {
